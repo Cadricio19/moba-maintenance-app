@@ -15,17 +15,33 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 1. SAMBUNGAN GOOGLE INTERACTIONS API (GEMINI-3.8-FLASH)
+# 1. PEMBERSIHAN KUNCI & SAMBUNGAN MULTI-FALLBACK
 # ----------------------------------------------------
-raw_api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
-if not raw_api_key:
-    st.error("API Key Gemini tidak ditemui! Sila semak GEMINI_API_KEY dalam Streamlit Secrets.")
+raw_api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+
+# Ekstrak nilai kunci sebenar walaupun ada baris baharu atau tanda petik
+lines = [l.strip() for l in str(raw_api_key).splitlines() if l.strip()]
+CLEAN_API_KEY = ""
+if lines:
+    for line in reversed(lines):
+        candidate = line.strip().strip('"').strip("'")
+        if candidate.startswith("AQ.") or candidate.startswith("AIza"):
+            CLEAN_API_KEY = candidate
+            break
+    if not CLEAN_API_KEY:
+        CLEAN_API_KEY = lines[-1].strip().strip('"').strip("'")
+
+if not CLEAN_API_KEY:
+    st.error("API Key Gemini tidak ditemui! Sila masukkan GEMINI_API_KEY dalam Streamlit Secrets.")
     st.stop()
 
-CLEAN_API_KEY = str(raw_api_key).strip().strip('"').strip("'")
+# Paparan status kunci pada bar sisi
+with st.sidebar:
+    st.markdown("### 🔑 Status Sambungan AI")
+    st.caption(f"Kunci dikesan: `{CLEAN_API_KEY[:8]}...{CLEAN_API_KEY[-5:]}` ({len(CLEAN_API_KEY)} aksara)")
 
 def extract_text_from_response(data):
-    """Mengekstrak teks respons secara selamat tanpa mengira hierarki JSON."""
+    """Mengekstrak teks respons secara selamat tanpa mengira skema JSON."""
     if isinstance(data, list):
         for entry in data:
             res = extract_text_from_response(entry)
@@ -76,36 +92,73 @@ def extract_text_from_response(data):
     return None
 
 def call_gemini_api(full_prompt):
-    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
-    headers = {
-        "x-goog-api-key": CLEAN_API_KEY,
-        "Content-Type": "application/json",
-        "Api-Revision": "2026-05-20"
-    }
-    payload = {
-        "model": "gemini-3.8-flash",
-        "input": full_prompt
-    }
-    
-    response = requests.post(url, headers=headers, json=payload, timeout=45)
-    
-    if response.status_code == 200:
-        data = response.json()
-        extracted_text = extract_text_from_response(data)
-        if extracted_text:
-            return extracted_text
-        formatted_json = json.dumps(data, indent=2)
-        return "Respons diterima tetapi struktur teks tidak dijangka:\n\n" + formatted_json
-    else:
+    """Mencuba pelbagai kombinasi endpoint dan pengepala secara automatik."""
+    attempts = [
+        # Kaedah 1: Interactions API dengan x-goog-api-key
+        {
+            "url": "https://generativelanguage.googleapis.com/v1beta/interactions",
+            "headers": {
+                "x-goog-api-key": CLEAN_API_KEY,
+                "Content-Type": "application/json",
+                "Api-Revision": "2026-05-20"
+            },
+            "payload": {
+                "model": "gemini-3.8-flash",
+                "input": full_prompt
+            }
+        },
+        # Kaedah 2: Interactions API dengan Authorization Bearer
+        {
+            "url": "https://generativelanguage.googleapis.com/v1beta/interactions",
+            "headers": {
+                "Authorization": f"Bearer {CLEAN_API_KEY}",
+                "Content-Type": "application/json",
+                "Api-Revision": "2026-05-20"
+            },
+            "payload": {
+                "model": "gemini-3.8-flash",
+                "input": full_prompt
+            }
+        },
+        # Kaedah 3: Generative Content API (gemini-2.5-flash)
+        {
+            "url": f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={CLEAN_API_KEY}",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {
+                "contents": [{"parts": [{"text": full_prompt}]}]
+            }
+        },
+        # Kaedah 4: Generative Content API (gemini-1.5-flash)
+        {
+            "url": f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={CLEAN_API_KEY}",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {
+                "contents": [{"parts": [{"text": full_prompt}]}]
+            }
+        }
+    ]
+
+    last_error = ""
+    for attempt in attempts:
         try:
-            err_data = response.json()
-            if isinstance(err_data, dict):
-                err_msg = err_data.get("error", {}).get("message", response.text)
+            resp = requests.post(
+                attempt["url"],
+                headers=attempt["headers"],
+                json=attempt["payload"],
+                timeout=35
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text_out = extract_text_from_response(data)
+                if text_out:
+                    return text_out
             else:
-                err_msg = str(err_data)
-        except Exception:
-            err_msg = response.text
-        raise Exception("HTTP " + str(response.status_code) + ": " + str(err_msg))
+                last_error = f"HTTP {resp.status_code}: {resp.text}"
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    raise Exception(f"Semua laluan API gagal disahkan. Maklum balas terakhir: {last_error}")
 
 # ----------------------------------------------------
 # 2. PANGKALAN DATA PEMBELAJARAN KILANG (SQLITE)
@@ -245,7 +298,7 @@ with tab_ai:
         btn_diagnose = st.button("🚀 Analisis Masalah & Cari Solusi", use_container_width=True)
 
         if btn_diagnose and user_problem.strip():
-            with st.spinner("AI Gemini sedang membaca manual MOBA & menganalisis punca..."):
+            with st.spinner("AI sedang membaca manual MOBA & menganalisis punca mekanikal..."):
                 relevant_chunks = retrieve_relevant_chunks(user_problem, top_n=5)
                 
                 if relevant_chunks:
