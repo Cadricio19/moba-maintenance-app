@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
 import os
-import re
 
 st.set_page_config(
     page_title="MOBA FT 330 & FL 330 Maintenance Assistant",
@@ -11,12 +10,12 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 1. INISIALISASI MEMORI SESSION STATE
+# 1. MEMORI STATE
 # ----------------------------------------------------
 if "target_doc" not in st.session_state:
     st.session_state.target_doc = "FL_Loader_Service.pdf"
 if "target_page" not in st.session_state:
-    st.session_state.target_page = 112
+    st.session_state.target_page = 57
 
 def get_pdf_page_image(pdf_path, page_num):
     if os.path.exists(pdf_path):
@@ -32,235 +31,195 @@ def get_pdf_page_image(pdf_path, page_num):
     return None, 0
 
 # ----------------------------------------------------
-# 2. PANGKALAN DATA DIAGNOSTIK KEJURUTERAAN (TROUBLESHOOTING MATRIX)
+# 2. DATA DIAGNOSTIK MENGIKUT ZON MESIN
 # ----------------------------------------------------
 TROUBLESHOOTING_DB = [
     {
         "id": "loader_vacuum_loss",
-        "category": "Loader FL 330",
+        "zone": "Loader: Suction Head",
         "title": "Loader: Telur Jatuh / Cawan Sedutan Hilang Vakum",
         "doc": "FL_Loader_Service.pdf",
         "page": 157,
-        "keywords": ["sedut", "vacuum", "vakum", "suction", "drop", "jatuh", "tak sedut", "loader tak berfungsi", "pecah"],
-        "symptom": "Cawan sedutan (suction cups) gagal mengangkat telur daripada dulang atau telur terlepas semasa pemindahan ke infeed.",
-        "root_cause": "Injap blow-back bocor/tersumbat, pemasaan piring lengkung (curve disk) lari, atau tekanan udara sistem bawah had minimum.",
-        "investigation": [
-            "1. Periksa tolok tekanan pneumatik manifold: Tekanan mesti sekurang-kurangnya 5 bar untuk mula, 6 bar semasa operasi.",
-            "2. Periksa cawan sedutan: Pastikan tiada rekahan getah dan cuci hanya dengan air bersih suhu bilik (<30°C).",
-            "3. Periksa injap 'blow-back': Pastikan injap ditekan rapat ke dudukannya oleh tekanan spring semasa fasa sedutan."
-        ],
-        "action": "Laraskan pemasaan vakum menggunakan pin pelaras 15 mm melalui piring lengkung (curve disk) dan perisai kerangka. Buka muka surat 157 untuk rajah skru pelaras.",
-        "specs": "Tekanan Min: 5.0 bar | Ketinggian Suction Cup atas Plateau: 30 - 33 mm"
+        "keywords": ["sedut", "vacuum", "suction", "drop", "jatuh", "tak sedut"],
+        "symptom": "Cawan sedutan gagal mengangkat telur daripada dulang atau terlepas semasa pemindahan.",
+        "root_cause": "Injap blow-back bocor/tersumbat, pemasaan piring lengkung lari, atau tekanan udara < 5 bar.",
+        "action": "Tala pemasaan vakum menggunakan pin pelaras 15 mm melalui piring lengkung (curve disk).",
+        "specs": "Tekanan Min: 5.0 bar | Tinggi Cawan atas Plateau: 30 - 33 mm"
     },
     {
         "id": "loader_belt_timing",
-        "category": "Loader FL 330",
+        "zone": "Loader: Drive Mechanism",
         "title": "Loader: Timing Lari / Tali Sawat Bunyi / Tersentak",
         "doc": "FL_Loader_Service.pdf",
         "page": 112,
-        "keywords": ["timing", "belt", "tali sawat", "toothed", "gegar", "bunyi", "singkron", "tersentak", "frekuensi"],
-        "symptom": "Pergerakan Suction Head atau Gripper Head tersentak, bunyi ketukan tali sawat, atau telur tidak mendarat tepat pada roller.",
-        "root_cause": "Ketegangan tali sawat bergerigi (toothed belt) kendur atau terkeluar daripada frekuensi akustik standard.",
-        "investigation": [
-            "1. Periksa sama ada tali sawat baru ditukar (Tali sawat baru WAJIB ditegangkan semula selepas 2 jam operasi pertama).",
-            "2. Pastikan pin pelaras 15 mm boleh masuk lancar ke dalam lubang jajaran kerangka sebelum talaan dibuat."
-        ],
-        "action": "Gunakan meter frekuensi akustik. Longgarkan nat kunci dan putar bolt pelaras sehingga frekuensi getaran tali sawat mencapai nilai standard.",
-        "specs": "Suction Head Belt: 60 Hz | Gripper Head Belt: 46 - 47 Hz | Suction-Gripper: 55 - 60 Hz"
-    },
-    {
-        "id": "loader_gripper_crash",
-        "category": "Loader FL 330",
-        "title": "Loader: Pencengkam (Gripper) Langgar Dulang / Tak Sentral",
-        "doc": "FL_Loader_Service.pdf",
-        "page": 106,
-        "keywords": ["gripper", "pencengkam", "dulang", "tray", "sangkut", "langgar", "bengkok", "tak lepas"],
-        "symptom": "Pencengkam dulang berlanggar dengan bucu tray plastik/kertas atau gagal memegang dulang kosong dengan kemas ke bahagian shedder.",
-        "root_cause": "Jarak bukaan rod silinder lari atau kedudukan penderia resolver motor PT teranjak.",
-        "investigation": [
-            "1. Tolak rod silinder keluar sepenuhnya secara manual.",
-            "2. Ukur jarak antara kedua-dua hujung pencengkam."
-        ],
-        "action": "Longgarkan nat pengunci pada rod silinder. Laraskan kepala rod (rod head) sehingga bukaan tepat 290 mm. Rujuk Bab 8.7.8 muka surat 106.",
-        "specs": "Bukaan Gripper Standard: Tepat 290 mm | Spring Kompresi: 5.3 darjah (~30 mm)"
+        "keywords": ["timing", "belt", "tali sawat", "toothed", "gegar", "frekuensi"],
+        "symptom": "Pergerakan Suction Head tersentak atau telur tidak mendarat tepat pada roller.",
+        "root_cause": "Ketegangan tali sawat toothed belt kendur atau lari frekuensi standard.",
+        "action": "Gunakan acoustic frequency meter. Laraskan bolt sehingga ketegangan mencapai 60 Hz.",
+        "specs": "Suction Head: 60 Hz | Gripper Head: 46 - 47 Hz | Suction-Gripper: 55 - 60 Hz"
     },
     {
         "id": "loader_stack_stop_jam",
-        "category": "Loader FL 330",
-        "title": "Loader: Dulang Bertindih / Stack Stop Meja Angkat Jamming",
+        "zone": "Loader: Infeed & Lift",
+        "title": "Loader: Dulang Bertindih / Stack Stop Jamming",
         "doc": "FL_Loader_Service.pdf",
         "page": 84,
-        "keywords": ["stack", "stop", "meja angkat", "lift", "bertindih", "dulang jam", "jamming", "transfer"],
-        "symptom": "Timbunan dulang telur terbalik, tersangkut semasa masuk ke meja angkat (lift bridge), atau hentian dulang mengeluarkan bunyi bising.",
-        "root_cause": "Lejang silinder stack stop tidak tepat 90 darjah terhadap tali sawat, atau penampan getah telah haus.",
-        "investigation": [
-            "1. Periksa sama ada flap hentian berada tepat pada sudut 90 darjah terhadap tali sawat apabila silinder ditarik masuk penuh.",
-            "2. Pastikan penampan getah tidak menahan pergerakan lejang penuh."
-        ],
-        "action": "Laraskan kepala rod silinder sehingga flap tepat berserenjang. Laraskan penampan getah sehingga menyentuh flap kemudian tambah separuh putaran. Rujuk muka surat 84.",
-        "specs": "Lejang Meja Angkat Maksimum: 260 mm | Jarak Pusat Lift-Transfer: 140 mm"
+        "keywords": ["stack", "stop", "meja angkat", "lift", "dulang jam", "jamming"],
+        "symptom": "Timbunan dulang telur tersangkut semasa masuk ke meja angkat (lift bridge).",
+        "root_cause": "Lejang silinder stack stop tidak tepat 90 darjah terhadap belt.",
+        "action": "Laraskan kepala rod silinder sehingga flap tepat 90 darjah terhadap tali sawat.",
+        "specs": "Lejang Meja Angkat: Maks 260 mm | Jarak Pusat Lift-Transfer: 140 mm"
     },
     {
         "id": "infeed_shaking",
-        "category": "Infeed FT 330",
-        "title": "Infeed: Rantai Bergerak Kasar / Gegaran Infeed / MultiDrum Trip",
+        "zone": "Infeed: Double Roll & MultiDrum",
+        "title": "Infeed: Rantai Bergerak Kasar / MultiDrum Trip",
         "doc": "Omnia_FT_Service.pdf",
         "page": 61,
-        "keywords": ["infeed", "gegar", "shaking", "rantai", "vibrate", "lompat", "drum trip", "emergency", "infeed gegar"],
-        "symptom": "Rantai Double Roll bergetar kuat, telur melompat keluar dari poket roller, atau suis keselamatan MultiDrum kerap mencetuskan Emergency Stop.",
-        "root_cause": "Spring penegang keselamatan MultiDrum kendur, rel sokongan rantai kembali terlalu rendah, atau kelegaan roller terlalu ketat.",
-        "investigation": [
-            "1. Ukur panjang spring keselamatan MultiDrum di kedua-dua belah.",
-            "2. Periksa kelegaan sisi (play) setiap roller pada seksyen masukan dan crack detector."
-        ],
-        "action": "Tala panjang spring keselamatan MultiDrum kepada 110 mm (boleh dikurangkan ke 100 mm jika kerap trip). Tinggikan rel sokongan rantai kembali Double Roll setinggi mungkin tanpa rantai melompat. Rujuk Bab 6.3.7 muka surat 61.",
-        "specs": "Spring MultiDrum FT 330: 110 mm (Min: 100 mm) | Kelegaan Roller: 0.5 - 1.0 mm"
-    },
-    {
-        "id": "infeed_multidrum_sync",
-        "category": "Infeed FT 330",
-        "title": "Infeed: MultiDrum™ Tak Singkron / Telur Pecah Masuk Drum",
-        "doc": "Omnia_FT_Service.pdf",
-        "page": 74,
-        "keywords": ["multidrum", "drum", "carrier", "tak singkron", "sync", "telur pecah", "infeed side", "outfeed side"],
-        "symptom": "Pembawa (carrier) MultiDrum tidak menyambut telur tepat pada roller infeed, mengakibatkan telur terhempas atau retak.",
-        "root_cause": "Bolt gegancu (sprocket wheel) drum longgar atau jajaran aci drum terpusing (twisted).",
-        "investigation": [
-            "1. Tanggalkan 3 set carrier untuk mendedahkan dua aci drum.",
-            "2. Letakkan tolok aras air (spirit level) pada kedua-dua aci untuk memastikan ia rata."
-        ],
-        "action": "Longgarkan bolt gear rantai. Laraskan jarak roller pertama Double Roll kepada tepat 360 mm dari aci MultiDrum pada bahagian infeed. Rujuk Bab 7.3.2 muka surat 74.",
-        "specs": "Jarak Roller Infeed ke Aci Drum: Tepat 360 mm (Double Roll) / 364 mm (Single Roll)"
-    },
-    {
-        "id": "loader_infeed_sync",
-        "category": "Sinkronisasi Mesin",
-        "title": "Sinkronisasi: Telur Mendarat Atas Roller (Bukan Antara Roller)",
-        "doc": "Omnia_FT_Service.pdf",
-        "page": 112,
-        "keywords": ["singkron", "synchronisation", "mendarat", "roller", "landing", "pecah", "synchrobox", "transfer"],
-        "symptom": "Cawan sedutan Loader melepaskan telur tepat di atas puncak roller, menyebabkan telur bergolek ganas atau pecah.",
-        "root_cause": "Anjakan fasa (phase shift) antara motor Loader dan motor Infeed Grader pada unit Synchrobox MA19.",
-        "investigation": [
-            "1. Periksa lampu LED pada kad Synchro Control MA19 di kabinet Loader.",
-            "2. Perhatikan kedudukan piring pelaras synchro pada Transfer unit."
-        ],
-        "action": "Longgarkan tombol pengunci piring synchro pada Transfer unit. Jika pelepasan terlalu awal, putar piring mengikut arah panah. Jika terlalu lewat, putar lawan arah panah (1 lubang = pergerakan 1 mm). Rujuk muka surat 112.",
-        "specs": "Pergerakan 1 Lubang Piring Synchro = 1.0 mm Posisi Pelepasan Telur"
+        "keywords": ["infeed", "gegar", "shaking", "rantai", "vibrate", "drum trip"],
+        "symptom": "Rantai Double Roll bergetar kuat atau suis keselamatan MultiDrum kerap trip.",
+        "root_cause": "Spring MultiDrum kendur, rel sokongan rantai rendah, atau kelegaan roller ketat.",
+        "action": "Tala spring MultiDrum kepada 110 mm. Tinggikan rel sokongan rantai kembali.",
+        "specs": "Spring MultiDrum: 110 mm (Min: 100 mm) | Kelegaan Roller: 0.5 - 1.0 mm"
     },
     {
         "id": "weighing_loadcell_error",
-        "category": "Penimbang Omnia",
-        "title": "Penimbang: Bacaan Gram Telur Lari / Kalibrasi Loadcell Gagal",
+        "zone": "Grader: Weighing Section",
+        "title": "Penimbang: Bacaan Gram Telur Lari / Kalibrasi Gagal",
         "doc": "Omnia_FT_Service.pdf",
         "page": 105,
-        "keywords": ["timbang", "weighing", "loadcell", "berat", "gram", "lari", "carwgpc", "calibration", "kalibrasi"],
-        "symptom": "Gred berat telur tidak tepat, peratusan telur off-grade tinggi, atau paparan 'PrEr' pada sistem kawalan.",
-        "root_cause": "Sisa cecair telur mengering pada loadcell, pembawa bengkok, atau piring pemasaan (Main Timing Disk) lari.",
-        "investigation": [
-            "1. Tiup habuk dan sisa kotoran pada loadcell menggunakan udara termampat kering.",
-            "2. Periksa jarak penderia pembawa loadcell 0 (Loadcell-carrier 0) menggunakan feeler gauge (mesti 1.0 mm)."
-        ],
-        "action": "Lancarkan perisian 'CarWgPc.exe' dari ServerPC. Jalankan 'Empty Carrier Calibration' (10 kitaran). Seterusnya kalibrasi pembawa menggunakan pemberat kalibrasi plastik MOBA 63 gram (Art. 80206980). Rujuk muka surat 105.",
-        "specs": "Pemberat Kalibrasi Pembawa: 63 gram | Pemberat Ujian Statik: 130 gram | Jarak Sensor: 1 mm"
-    },
-    {
-        "id": "uv_sanitizer_life",
-        "category": "Sanitasi Infeed",
-        "title": "UV-C Infeed: Tiub Lampu Malap / Amaran Tamat Hayat",
-        "doc": "Philips_UV_Specs.pdf",
-        "page": 1,
-        "keywords": ["uv", "lampu", "disinfection", "kuman", "philips", "pl-l 55w", "sanitasi"],
-        "symptom": "Lampu UV-C tidak menyala, berkelip-kelip, atau jam operasi mesin melebihi had hayat berkesan tiub.",
-        "root_cause": "Tiub lampu telah mencapai had degradasi radiasi 15% selepas 9,000 jam operasi atau ballast elektronik rosak.",
-        "investigation": [
-            "1. Semak rekod jam operasi penjejak PM mesin.",
-            "2. Pastikan suis keselamatan penutup UV mematikan litar secara automatik semasa dibuka."
-        ],
-        "action": "Gantikan dengan tiub rasmi: Philips TUV PL-L 55W/4P HF 1CT/25 (Pangkalan 2G11 4-Pin, Kod 927908704007). Pastikan LOTO dipatuhi dan elakkan sentuhan langsung dengan mata/kulit.",
-        "specs": "Kuasa: 55 W | Radiasi UV-C: 17.0 W | Had Hayat: Tepat 9,000 Jam Operasi"
+        "keywords": ["timbang", "weighing", "loadcell", "berat", "gram", "carwgpc"],
+        "symptom": "Gred berat telur tidak tepat atau paparan ralat 'PrEr' pada sistem.",
+        "root_cause": "Cecair telur kering pada loadcell atau piring pemasaan utama (timing disk) lari.",
+        "action": "Jalankan Empty Carrier Calibration (10 kitaran) dan kalibrasi pembawa dengan pemberat 63g.",
+        "specs": "Pemberat Kalibrasi Pembawa: 63 gram (Art. 80206980) | Ujian Loadcell: 130 gram"
     }
 ]
 
 # ----------------------------------------------------
-# 3. SUSUN ATUR ANTARAMUKA STREAMLIT
+# 3. SUSUN ATUR TAB UTAMA
 # ----------------------------------------------------
-tab_diag, tab_specs, tab_pm = st.tabs([
-    "🔍 Diagnostik & Rujukan Dokumen Asal", 
-    "📏 Parameter & Toleransi Kunci (Cheat Sheet)", 
+tab_map, tab_diag, tab_specs, tab_pm = st.tabs([
+    "🗺️ Pelan Susun Atur Mesin (Top-Down)",
+    "🔍 Diagnostik Kerosakan & Manual", 
+    "📏 Parameter & Toleransi Kunci", 
     "🛠️ Penjejak PM & Jam Operasi"
 ])
 
 # ====================================================
-# TAB 1: DIAGNOSTIK & SEMAKAN MANUAL ASAL
+# TAB 1: PELAN SUSUN ATUR DARI ATAS (TOP-DOWN VIEW)
+# ====================================================
+with tab_map:
+    st.subheader("🗺️ Pelan Pandangan Atas Mesin (Pilih Zon Kerosakan)")
+    st.caption("Gunakan pelan skematik ini untuk mengenal pasti bahagian fizikal mesin yang mengalami gangguan.")
+
+    col_map_sel, col_map_view = st.columns([1, 2])
+
+    with col_map_sel:
+        st.markdown("### 1. Pilih Pelan Unit:")
+        plan_choice = st.radio(
+            "Pelan Sistem:",
+            ["Foodtec Loader FL 330 (13 Modul Penuh)", "Omnia FT 330 Grader (Susun Atur Keseluruhan)"]
+        )
+
+        if plan_choice == "Foodtec Loader FL 330 (13 Modul Penuh)":
+            st.markdown("""
+            **Zon Utama Loader FL 330 (Rujuk Nombor Rajah):**
+            * **[1 - 3]**: Infeed Belt, Unit Pusingan & Hentian Dulang (*Stack Stop*)
+            * **[4]**: Meja Angkat (*Lift Bridge*)
+            * **[5]**: *Suction-Gripper Head*
+            * **[6]**: Penghantar Plateau (*PT Chain*)
+            * **[7]**: Cawan Sedutan (*Suction Head*)
+            * **[8]**: Pencengkam Dulang Kosong (*Gripper Head*)
+            * **[9]**: Unit Penyingkir Dulang (*Shedder Unit*)
+            """)
+            
+            st.markdown("---")
+            st.markdown("### 2. Tindakan Pantas Mengikut Zon:")
+            if st.button("🔧 Masalah Suction Head [Zon 7]"):
+                st.session_state.target_doc = "FL_Loader_Service.pdf"
+                st.session_state.target_page = 112
+                st.success("Manual dimuatkan: Ketegangan Toothed Belt Suction Head (m/s 112)")
+            if st.button("🔧 Masalah Meja Angkat & Dulang Bertindih [Zon 3-4]"):
+                st.session_state.target_doc = "FL_Loader_Service.pdf"
+                st.session_state.target_page = 84
+                st.success("Manual dimuatkan: Pelarasan Lejang Silinder Stack Stop (m/s 84)")
+            if st.button("🔧 Masalah Pencengkam Dulang [Zon 8]"):
+                st.session_state.target_doc = "FL_Loader_Service.pdf"
+                st.session_state.target_page = 106
+                st.success("Manual dimuatkan: Pelarasan Bukaan Gripper 290 mm (m/s 106)")
+
+        else:
+            st.markdown("""
+            **Zon Utama Omnia FT 330 Grader:**
+            * **[1] Infeed / Accumulator**: Penerimaan telur dari ladang/loader.
+            * **[2] MultiDrum™ & Infeed**: Jajaran telur & orientasi sebelum penimbang.
+            * **[3] Transfer Unit**: Pemindahan telur ke pembawa penimbang.
+            * **[4] Frame & Weighing**: Penimbang loadcell & pembawa utama.
+            * **[5] Packing Lanes**: Lorong pembungkusan automatik.
+            """)
+            
+            st.markdown("---")
+            st.markdown("### 2. Tindakan Pantas Mengikut Zon:")
+            if st.button("🔧 Gegaran Infeed & Rantai [Zon 2]"):
+                st.session_state.target_doc = "Omnia_FT_Service.pdf"
+                st.session_state.target_page = 61
+                st.success("Manual dimuatkan: Penyelesaian Rantai Shaking & Spring 110 mm (m/s 61)")
+            if st.button("🔧 Penimbang Loadcell Ralat [Zon 4]"):
+                st.session_state.target_doc = "Omnia_FT_Service.pdf"
+                st.session_state.target_page = 105
+                st.success("Manual dimuatkan: Prosedur Kalibrasi Penimbang CarWgPc (m/s 105)")
+
+    with col_map_view:
+        # Papar gambar pelan skematik terus dari manual
+        if plan_choice == "Foodtec Loader FL 330 (13 Modul Penuh)":
+            st.markdown("#### 📐 Rajah Pelan Atas Berwarna: Foodtec Loader FL 330 (M/S 57)")
+            img, _ = get_pdf_page_image("FL_Loader_Service.pdf", 57)
+            if img:
+                st.image(img, use_container_width=True)
+        else:
+            st.markdown("#### 📐 Rajah Pelan Atas: Omnia FT Grader & Packing Lanes (M/S 188)")
+            img, _ = get_pdf_page_image("Omnia_FT_Service.pdf", 188)
+            if img:
+                st.image(img, use_container_width=True)
+
+# ====================================================
+# TAB 2: DIAGNOSTIK KEROSAKAN & RUJUKAN MANUAL
 # ====================================================
 with tab_diag:
     col_left, col_right = st.columns([1, 1])
 
     with col_left:
-        st.subheader("1. Huraikan Simptom Kerosakan Mesin")
-        user_query = st.text_input(
-            "Taip masalah di lantai kilang (cth: loader tak sedut telur, infeed bergegar, timing belt kendur):",
-            placeholder="Taip apa-apa simptom di sini..."
-        )
+        st.subheader("Carian Masalah Kerosakan")
+        user_query = st.text_input("Taip kerosakan di lantai kilang (cth: loader, gegar, timbang, belt):")
 
-        st.subheader("2. Atau Tapis Mengikut Bahagian Mesin")
-        category_filter = st.selectbox(
-            "Pilih sub-sistem berkaitan:",
-            ["Semua Bahagian", "Loader FL 330", "Infeed FT 330", "Sinkronisasi Mesin", "Penimbang Omnia", "Sanitasi UV-C"]
-        )
-
-        # Penapis Carian
-        matched_cases = []
-        clean_query = user_query.lower() if user_query else ""
-
-        for case in TROUBLESHOOTING_DB:
-            # Tapis kategori
-            if category_filter != "Semua Bahagian" and case["category"] != category_filter:
-                continue
-            
-            # Padanan kata kunci
-            if clean_query:
-                # Padankan jika mana-mana kata kunci sepadan
-                if any(k in clean_query for k in case["keywords"]) or any(word in case["title"].lower() for word in clean_query.split()):
-                    matched_cases.append(case)
+        matched = []
+        q = user_query.lower() if user_query else ""
+        for c in TROUBLESHOOTING_DB:
+            if q:
+                if any(k in q for k in c["keywords"]) or any(w in c["title"].lower() for w in q.split()):
+                    matched.append(c)
             else:
-                matched_cases.append(case)
+                matched.append(c)
 
-        st.markdown(f"**Ditemui {len(matched_cases)} Panduan Penyelesaian:**")
-        st.markdown("---")
+        for c in matched:
+            with st.expander(f"🔴 {c['title']}", expanded=(len(matched) == 1)):
+                st.write(f"**Zon Mesin:** `{c['zone']}`")
+                st.write(f"**Simptom:** {c['symptom']}")
+                st.write(f"**Punca:** `{c['root_cause']}`")
+                st.success(f"**Tindakan:** {c['action']}")
+                st.info(f"**Toleransi Standard:** `{c['specs']}`")
+                if st.button(f"📖 Buka Manual {c['doc']} (M/S {c['page']})", key=f"btn_diag_{c['id']}"):
+                    st.session_state.target_doc = c["doc"]
+                    st.session_state.target_page = c["page"]
+                    st.rerun()
 
-        if matched_cases:
-            for c in matched_cases:
-                with st.expander(f"🔴 {c['title']}", expanded=(len(matched_cases) == 1)):
-                    st.markdown(f"**⚠️ Simptom:** {c['symptom']}")
-                    st.markdown(f"**🔍 Punca Sebenar:** `{c['root_cause']}`")
-                    st.markdown("**📋 Langkah Siasatan (Troubleshooting):**")
-                    for inv in c["investigation"]:
-                        st.write(inv)
-                    st.success(f"**🛠️ Tindakan Pembaikan:** {c['action']}")
-                    st.info(f"**📐 Nilai Toleransi Standard:** `{c['specs']}`")
-                    
-                    # Butang Buka Muka Surat Manual Asal
-                    btn_label = f"📖 Buka Rajah Manual: {c['doc']} (Muka Surat {c['page']})"
-                    if st.button(btn_label, key=f"btn_{c['id']}"):
-                        st.session_state.target_doc = c["doc"]
-                        st.session_state.target_page = c["page"]
-                        st.rerun()
-        else:
-            st.warning("Tiada padanan masalah ditemui bagi carian anda.")
-            st.info("Cuba gunakan kata kunci seperti: `sedut`, `vacuum`, `gegar`, `belt`, `timbang`, `dulang`, atau pilih 'Semua Bahagian'.")
-
-    # Kolum Kanan: Paparan Halaman Dokumen Asal
     with col_right:
-        st.subheader("📄 Keratan Rajah & Panduan Manual Asal")
-        
+        st.subheader("📄 Dokumen Servis Rasmi")
         if st.session_state.target_doc:
             img_bytes, total = get_pdf_page_image(st.session_state.target_doc, st.session_state.target_page)
             if img_bytes:
-                st.success(f"Fail: `{st.session_state.target_doc}` | Halaman {st.session_state.target_page} daripada {total}")
-                
-                # Butang Kawalan Muka Surat (Next / Prev)
+                st.success(f"Fail: `{st.session_state.target_doc}` | Halaman {st.session_state.target_page} / {total}")
                 c_prev, c_next = st.columns(2)
                 with c_prev:
                     if st.button("⬅️ Muka Surat Sebelumnya", use_container_width=True):
@@ -272,63 +231,43 @@ with tab_diag:
                         if st.session_state.target_page < total:
                             st.session_state.target_page += 1
                             st.rerun()
-
-                # Papar imej rajah skematik manual
                 st.image(img_bytes, use_container_width=True)
-            else:
-                st.error(f"Gagal memuatkan fail '{st.session_state.target_doc}'. Pastikan fail PDF berada di root folder GitHub.")
-        else:
-            st.info("Pilih mana-mana masalah di sebelah kiri dan klik butang 'Buka Rajah Manual' untuk melihat dokumen teknikal asal.")
 
 # ====================================================
-# TAB 2: PARAMETER & TOLERANSI KUNCI (CHEAT SHEET)
+# TAB 3: PARAMETER & TOLERANSI KUNCI
 # ====================================================
 with tab_specs:
-    st.subheader("Jadual Parameter & Toleransi Standard (Rujukan Poket Juruteknik)")
+    st.subheader("Jadual Toleransi & Parameter Standard")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("#### 🚜 Foodtec Loader FL 330")
         st.table(pd.DataFrame([
-            {"Komponen": "Toothed Belt Suction Head", "Nilai Standard": "60 Hz", "Rujukan": "Bab 8.9.1 (m/s 112)"},
-            {"Komponen": "Toothed Belt Gripper Head", "Nilai Standard": "46 – 47 Hz", "Rujukan": "Bab 8.10.4 (m/s 126)"},
-            {"Komponen": "Toothed Belt Suction-Gripper", "Nilai Standard": "55 – 60 Hz", "Rujukan": "Bab 8.7.4 (m/s 101)"},
-            {"Komponen": "Ketinggian Suction Cup atas Tray", "Nilai Standard": "30 – 33 mm", "Rujukan": "Bab 8.9.4 (m/s 116)"},
-            {"Komponen": "Jarak Bukaan Grippers", "Nilai Standard": "290 mm", "Rujukan": "Bab 8.7.8 (m/s 106)"},
-            {"Komponen": "Tekanan Udara Minimum (Trip)", "Nilai Standard": "4.0 bar (Trip) / 5.0 bar (Start)", "Rujukan": "Bab 8.13 (m/s 151)"},
-            {"Komponen": "Lejang Meja Angkat (Lift Stroke)", "Nilai Standard": "260 mm (Maksimum)", "Rujukan": "Bab 8.6.6 (m/s 91)"}
+            {"Komponen": "Toothed Belt Suction Head", "Nilai": "60 Hz", "Rujukan": "m/s 112"},
+            {"Komponen": "Toothed Belt Gripper Head", "Nilai": "46 – 47 Hz", "Rujukan": "m/s 126"},
+            {"Komponen": "Tinggi Cawan Suction atas Plateau", "Nilai": "30 – 33 mm", "Rujukan": "m/s 116"},
+            {"Komponen": "Bukaan Grippers Dulang", "Nilai": "290 mm", "Rujukan": "m/s 106"},
+            {"Komponen": "Tekanan Udara Minima", "Nilai": "4.0 bar (Trip) / 5.0 bar", "Rujukan": "m/s 151"}
         ]))
     with col2:
-        st.markdown("#### 🥚 Omnia FT 330 Grader & Infeed")
+        st.markdown("#### 🥚 Omnia FT 330 Grader")
         st.table(pd.DataFrame([
-            {"Komponen": "Spring MultiDrum™ FT 330", "Nilai Standard": "110 mm (Min: 100 mm)", "Rujukan": "Bab 6.3.4 (m/s 58)"},
-            {"Komponen": "Kelegaan Double Roll & Crack Section", "Nilai Standard": "0.5 – 1.0 mm", "Rujukan": "Bab 6.3.7 (m/s 61)"},
-            {"Komponen": "Jarak Sensor Induktif (Steel)", "Nilai Standard": "2.0 mm", "Rujukan": "Bab 4.2 (m/s 35)"},
-            {"Komponen": "Jarak Sensor Induktif (Stainless)", "Nilai Standard": "1.0 mm", "Rujukan": "Bab 4.2 (m/s 35)"},
-            {"Komponen": "Jarak Sensor Loadcell-Carrier 0", "Nilai Standard": "1.0 mm", "Rujukan": "Bab 9.6 (m/s 104)"},
-            {"Komponen": "Pemberat Kalibrasi Pembawa (Carrier)", "Nilai Standard": "63 gram (Art. 80206980)", "Rujukan": "Bab 9.7.3 (m/s 107)"},
-            {"Komponen": "Pemberat Ujian Loadcell", "Nilai Standard": "130 gram", "Rujukan": "Bab 9.7.5 (m/s 109)"}
+            {"Komponen": "Spring MultiDrum™ FT 330", "Nilai": "110 mm (Min: 100 mm)", "Rujukan": "m/s 58"},
+            {"Komponen": "Kelegaan Double Roll Infeed", "Nilai": "0.5 – 1.0 mm", "Rujukan": "m/s 61"},
+            {"Komponen": "Jarak Penderia Logam Keluli", "Nilai": "2.0 mm", "Rujukan": "m/s 35"},
+            {"Komponen": "Jarak Sensor Loadcell 0", "Nilai": "1.0 mm", "Rujukan": "m/s 104"},
+            {"Komponen": "Pemberat Kalibrasi Pembawa", "Nilai": "63 gram (Art. 80206980)", "Rujukan": "m/s 107"}
         ]))
 
 # ====================================================
-# TAB 3: PENJEJAK PM & JAM OPERASI
+# TAB 4: PENJEJAK PM & JAM OPERASI
 # ====================================================
 with tab_pm:
-    st.subheader("Penjejak Kitaran Hayat & Jadual Servis Berkala (PM)")
-    hrs = st.number_input("Masukkan Jumlah Jam Operasi Mesin Terkini:", min_value=0, value=2400, step=100)
-
-    st.markdown("#### 💡 Status Tiub Lampu UV-C Infeed (Philips TUV PL-L 55W)")
+    st.subheader("Penjejak Kitaran Hayat & Jadual PM")
+    hrs = st.number_input("Masukkan Jam Operasi Terkini:", min_value=0, value=2400, step=100)
     uv_used = hrs % 9000
-    st.write(f"Jam Terpakai: **{uv_used} / 9,000 Jam Operasi**")
+    st.write(f"**Lampu UV-C Philips TUV PL-L 55W:** {uv_used} / 9,000 Jam Operasi")
     st.progress(min(uv_used / 9000.0, 1.0))
     if uv_used >= 8500:
-        st.error("🚨 AMARAN: Lampu UV-C sudah melebihi 8,500 jam! Kadar nyahkuman merosot >15%. Sediakan tiub Philips 55W 2G11 gantian.")
+        st.error("🚨 Sediakan tiub gantian: Philips TUV PL-L 55W/4P HF (Kod: 927908704007).")
     else:
-        st.success("✅ Keadaan radiasi kuman UV-C memuaskan.")
-
-    st.markdown("---")
-    st.markdown("#### 📋 Senarai Semak Servis Berdasarkan Jam Operasi:")
-    st.write("• **Setiap 8 Jam (Harian):** Bersihkan sisa cecair telur pada poket dan cuci pemantul sensor optik.")
-    st.write("• **Setiap 40 Jam (Mingguan):** Buang kulit telur dan bulu ayam di kawasan dropset. Cuci penapis minyak EggInspector.")
-    st.write("• **Setiap 200 Jam (Bulanan):** Minyakkan rantai infeed (Shell T 46) dan cuci penapis air semburan.")
-    st.write("• **Setiap 1,200 Jam (6 Bulan):** Semak ketegangan tali sawat toothed belt (Hz) dan rantai pemacu.")
-    st.write("• **Setiap 2,400 Jam (Tahunan):** Gantikan penapis udara dan uji semua litar Emergency Stop & suis pintu interlock.")
+        st.success("✅ Intensiti tiub UV-C dalam keadaan baik.")
