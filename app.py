@@ -24,10 +24,10 @@ if not raw_api_key:
 CLEAN_API_KEY = str(raw_api_key).strip().strip('"').strip("'")
 
 def call_gemini_api(prompt_text, system_instruction):
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+    # Kunci API WAJIB dimasukkan ke dalam URL query parameter (?key=)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={CLEAN_API_KEY}"
     headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": CLEAN_API_KEY
+        "Content-Type": "application/json"
     }
     payload = {
         "contents": [{"parts": [{"text": prompt_text}]}],
@@ -44,7 +44,7 @@ def call_gemini_api(prompt_text, system_instruction):
     else:
         err_msg = response.json().get("error", {}).get("message", response.text)
         raise Exception(f"HTTP {response.status_code}: {err_msg}")
-
+        
 # ----------------------------------------------------
 # 2. PANGKALAN DATA PEMBELAJARAN KILANG (SQLITE)
 # ----------------------------------------------------
