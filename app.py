@@ -15,150 +15,42 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 1. PEMBERSIHAN KUNCI & SAMBUNGAN MULTI-FALLBACK
+# 1. SAMBUNGAN GEMINI REST API (key=API_KEY)
 # ----------------------------------------------------
 raw_api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
-
-# Ekstrak nilai kunci sebenar walaupun ada baris baharu atau tanda petik
-lines = [l.strip() for l in str(raw_api_key).splitlines() if l.strip()]
-CLEAN_API_KEY = ""
-if lines:
-    for line in reversed(lines):
-        candidate = line.strip().strip('"').strip("'")
-        if candidate.startswith("AQ.") or candidate.startswith("AIza"):
-            CLEAN_API_KEY = candidate
-            break
-    if not CLEAN_API_KEY:
-        CLEAN_API_KEY = lines[-1].strip().strip('"').strip("'")
+CLEAN_API_KEY = str(raw_api_key).strip().strip('"').strip("'")
 
 if not CLEAN_API_KEY:
-    st.error("API Key Gemini tidak ditemui! Sila masukkan GEMINI_API_KEY dalam Streamlit Secrets.")
+    st.error("API Key Gemini tidak ditemui! Sila semak GEMINI_API_KEY dalam Streamlit Secrets.")
     st.stop()
 
-# Paparan status kunci pada bar sisi
-with st.sidebar:
-    st.markdown("### 🔑 Status Sambungan AI")
-    st.caption(f"Kunci dikesan: `{CLEAN_API_KEY[:8]}...{CLEAN_API_KEY[-5:]}` ({len(CLEAN_API_KEY)} aksara)")
-
-def extract_text_from_response(data):
-    """Mengekstrak teks respons secara selamat tanpa mengira skema JSON."""
-    if isinstance(data, list):
-        for entry in data:
-            res = extract_text_from_response(entry)
-            if res:
-                return res
-        return None
-
-    if isinstance(data, dict):
-        if "output_text" in data and isinstance(data["output_text"], str):
-            return data["output_text"]
-        if data.get("type") == "text" and "text" in data:
-            return data["text"]
-
-        steps = data.get("steps")
-        if isinstance(steps, list):
-            for step in reversed(steps):
-                if isinstance(step, dict) and step.get("type") == "model_output":
-                    content = step.get("content")
-                    if isinstance(content, list):
-                        for item in content:
-                            if isinstance(item, dict) and item.get("text"):
-                                return item.get("text")
-                            elif isinstance(item, str):
-                                return item
-                    elif isinstance(content, str):
-                        return content
-                elif isinstance(step, (dict, list)):
-                    res = extract_text_from_response(step)
-                    if res:
-                        return res
-
-        candidates = data.get("candidates")
-        if isinstance(candidates, list) and len(candidates) > 0:
-            first_cand = candidates[0]
-            if isinstance(first_cand, dict):
-                parts = first_cand.get("content", {}).get("parts", [])
-                if isinstance(parts, list):
-                    for p in parts:
-                        if isinstance(p, dict) and "text" in p:
-                            return p["text"]
-
-        for val in data.values():
-            if isinstance(val, (dict, list)):
-                res = extract_text_from_response(val)
-                if res:
-                    return res
-
-    return None
-
-def call_gemini_api(full_prompt):
-    """Mencuba pelbagai kombinasi endpoint dan pengepala secara automatik."""
-    attempts = [
-        # Kaedah 1: Interactions API dengan x-goog-api-key
-        {
-            "url": "https://generativelanguage.googleapis.com/v1beta/interactions",
-            "headers": {
-                "x-goog-api-key": CLEAN_API_KEY,
-                "Content-Type": "application/json",
-                "Api-Revision": "2026-05-20"
-            },
-            "payload": {
-                "model": "gemini-3.8-flash",
-                "input": full_prompt
-            }
-        },
-        # Kaedah 2: Interactions API dengan Authorization Bearer
-        {
-            "url": "https://generativelanguage.googleapis.com/v1beta/interactions",
-            "headers": {
-                "Authorization": f"Bearer {CLEAN_API_KEY}",
-                "Content-Type": "application/json",
-                "Api-Revision": "2026-05-20"
-            },
-            "payload": {
-                "model": "gemini-3.8-flash",
-                "input": full_prompt
-            }
-        },
-        # Kaedah 3: Generative Content API (gemini-2.5-flash)
-        {
-            "url": f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={CLEAN_API_KEY}",
-            "headers": {"Content-Type": "application/json"},
-            "payload": {
-                "contents": [{"parts": [{"text": full_prompt}]}]
-            }
-        },
-        # Kaedah 4: Generative Content API (gemini-1.5-flash)
-        {
-            "url": f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={CLEAN_API_KEY}",
-            "headers": {"Content-Type": "application/json"},
-            "payload": {
-                "contents": [{"parts": [{"text": full_prompt}]}]
-            }
-        }
-    ]
-
+def call_gemini_api(prompt_text):
+    # Mengikut arahan rasmi Google: pasang sebagai parameter ?key=
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
     last_error = ""
-    for attempt in attempts:
+
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={CLEAN_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt_text}]}],
+            "generationConfig": {"temperature": 0.2}
+        }
+
         try:
-            resp = requests.post(
-                attempt["url"],
-                headers=attempt["headers"],
-                json=attempt["payload"],
-                timeout=35
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                text_out = extract_text_from_response(data)
-                if text_out:
-                    return text_out
+            response = requests.post(url, headers=headers, json=payload, timeout=35)
+            if response.status_code == 200:
+                data = response.json()
+                try:
+                    return data["candidates"][0]["content"]["parts"][0]["text"]
+                except (KeyError, IndexError):
+                    return "Ralat: Format respons AI tidak dapat diproses."
             else:
-                last_error = f"HTTP {resp.status_code}: {resp.text}"
+                last_error = f"HTTP {response.status_code}: {response.text}"
         except Exception as e:
             last_error = str(e)
-            continue
 
-    raise Exception(f"Semua laluan API gagal disahkan. Maklum balas terakhir: {last_error}")
+    raise Exception(f"Gagal berhubung dengan Gemini API: {last_error}")
 
 # ----------------------------------------------------
 # 2. PANGKALAN DATA PEMBELAJARAN KILANG (SQLITE)
@@ -298,7 +190,7 @@ with tab_ai:
         btn_diagnose = st.button("🚀 Analisis Masalah & Cari Solusi", use_container_width=True)
 
         if btn_diagnose and user_problem.strip():
-            with st.spinner("AI sedang membaca manual MOBA & menganalisis punca mekanikal..."):
+            with st.spinner("AI Gemini sedang membaca manual MOBA & menganalisis punca teknikal..."):
                 relevant_chunks = retrieve_relevant_chunks(user_problem, top_n=5)
                 
                 if relevant_chunks:
@@ -359,7 +251,7 @@ ADUAN JURUTEKNIK:
             st.markdown("---")
             with st.expander("📝 Rekod Solusi Sebenar di Kilang (AI Belajar Daripada Ini)"):
                 st.caption("Masukkan hasil pembaikan sebenar agar AI merujuk rekod ini pada masa akan datang.")
-                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Gear wheel penegang spring longgar atau rantai kendur")
+                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Spring penegang pusher chain kendur melepasi tanda had 6")
                 action_done = st.text_input("Tindakan Dibuat:", placeholder="cth: Pindah gear wheel 1 lubang ke bawah dan set kelegaan plat had 1 mm")
                 mod_affected = st.selectbox("Bahagian Terlibat:", ["Packing Lane", "Loader FL 330", "Infeed FT 330", "Penimbang", "Lain-lain"])
                 
