@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 1. SAMBUNGAN GEMINI REST API (SERASI FORMAT AQ.)
+# 1. SAMBUNGAN GOOGLE INTERACTIONS API (GEMINI-3.8-FLASH)
 # ----------------------------------------------------
 raw_api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 if not raw_api_key:
@@ -23,28 +23,33 @@ if not raw_api_key:
 
 CLEAN_API_KEY = str(raw_api_key).strip().strip('"').strip("'")
 
-def call_gemini_api(prompt_text, system_instruction):
-    # Kunci API WAJIB dimasukkan ke dalam URL query parameter (?key=)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={CLEAN_API_KEY}"
+def call_gemini_api(full_prompt):
+    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
     headers = {
-        "Content-Type": "application/json"
+        "x-goog-api-key": CLEAN_API_KEY,
+        "Content-Type": "application/json",
+        "Api-Revision": "2026-05-20"
     }
     payload = {
-        "contents": [{"parts": [{"text": prompt_text}]}],
-        "systemInstruction": {"parts": [{"text": system_instruction}]},
-        "generationConfig": {"temperature": 0.2}
+        "model": "gemini-3.8-flash",
+        "input": full_prompt
     }
-    response = requests.post(url, headers=headers, json=payload, timeout=30)
+    
+    response = requests.post(url, headers=headers, json=payload, timeout=40)
+    
     if response.status_code == 200:
         data = response.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            return "Ralat: Format respons AI tidak dijangka."
+        # Ekstrak output teks daripada struktur steps -> model_output
+        for step in data.get("steps", []):
+            if step.get("type") == "model_output":
+                for item in step.get("content", []):
+                    if item.get("type") == "text":
+                        return item.get("text")
+        return "Ralat: AI tidak memulangkan blok teks yang sah."
     else:
         err_msg = response.json().get("error", {}).get("message", response.text)
         raise Exception(f"HTTP {response.status_code}: {err_msg}")
-        
+
 # ----------------------------------------------------
 # 2. PANGKALAN DATA PEMBELAJARAN KILANG (SQLITE)
 # ----------------------------------------------------
@@ -83,7 +88,7 @@ def get_past_logs():
 init_db()
 
 # ----------------------------------------------------
-# 3. PENGINDEKSAN MANUAL TEKNIKAL
+# 3. PENGINDEKSAN MANUAL TEKNIKAL & CARIAN KONTEKS
 # ----------------------------------------------------
 @st.cache_resource
 def load_all_manuals():
@@ -183,7 +188,7 @@ with tab_ai:
         btn_diagnose = st.button("🚀 Analisis Masalah & Cari Solusi", use_container_width=True)
 
         if btn_diagnose and user_problem.strip():
-            with st.spinner("AI sedang menganalisis punca mekanikal & manual MOBA..."):
+            with st.spinner("AI Gemini sedang membaca manual MOBA & menganalisis punca..."):
                 relevant_chunks = retrieve_relevant_chunks(user_problem, top_n=5)
                 
                 if relevant_chunks:
@@ -191,32 +196,36 @@ with tab_ai:
                     st.session_state.view_page = relevant_chunks[0]["page"]
 
                 past_logs_df = get_past_logs()
-                past_logs_text = past_logs_df.head(5).to_string(index=False) if not past_logs_df.empty else "Tiada rekod sebelumnya."
+                past_logs_text = past_logs_df.head(5).to_string(index=False) if not past_logs_df.empty else "Tiada rekod kerosakan sebelumnya."
 
                 context_text = "\n---\n".join([
                     f"[DOKUMEN: {c['doc_name']} | FAIL: {c['file']} | MUKA SURAT: {c['page']}]\n{c['text'][:1200]}"
                     for c in relevant_chunks
                 ])
 
-                system_instruction = (
-                    "Anda ialah Jurutera Kanan Penyelenggaraan bagi mesin gred telur MOBA Omnia FT 330 "
-                    "dan Foodtec Loader FL 330. Jawab dalam Bahasa Melayu secara profesional, berstruktur, dan teknikal.\n"
-                    "Gunakan maklumat rujukan manual dan sejarah kilang yang dibekalkan di bawah.\n"
-                    "FORMAT JAWAPAN:\n"
-                    "1. Ringkasan Diagnostik & Punca Mekanikal/Elektrikal.\n"
-                    "2. Soalan Pengesahan (jika aduan juruteknik masih kabur).\n"
-                    "3. Tindakan Pembetulan Langkah demi Langkah (nyatakan nombor bab, nilai mm, Hz, atau bar).\n"
-                    "4. Rujukan Muka Surat & Dokumen Tepat (wajib nyatakan nama fail dan muka surat)."
-                )
+                # Gabungkan arahan jurutera terus ke dalam input prompt untuk Interactions API
+                prompt_content = f"""Anda ialah Jurutera Kanan Penyelenggaraan bagi mesin gred telur MOBA Omnia FT 330 dan Foodtec Loader FL 330. Jawab dalam Bahasa Melayu secara profesional, padat, dan teknikal.
 
-                prompt_content = (
-                    f"SEJARAH REKOD KEROSAKAN KILANG:\n{past_logs_text}\n\n"
-                    f"PETIKAN MANUAL TEKNIKAL MOBA:\n{context_text}\n\n"
-                    f"ADUAN JURUTEKNIK:\n{user_problem}"
-                )
+PANDUAN FORMAT JAWAPAN:
+1. Ringkasan Diagnostik & Punca Mekanikal/Elektrikal.
+2. Soalan Pengesahan (jika simptom masih kabur).
+3. Tindakan Pembetulan Langkah demi Langkah (nyatakan nombor bab, nilai toleransi mm/Hz/bar).
+4. Rujukan Muka Surat & Dokumen Tepat (wajib nyatakan nama fail dan muka surat).
 
+---
+REKOD SEJARAH KEROSAKAN KILANG:
+{past_logs_text}
+
+---
+PETIKAN DOKUMEN SERVICE MANUAL MOBA:
+{context_text}
+
+---
+ADUAN JURUTEKNIK:
+{user_problem}
+"""
                 try:
-                    ai_reply = call_gemini_api(prompt_content, system_instruction)
+                    ai_reply = call_gemini_api(prompt_content)
                     st.session_state.ai_response = ai_reply
                     st.session_state.relevant_chunks = relevant_chunks
                 except Exception as e:
@@ -241,7 +250,7 @@ with tab_ai:
             st.markdown("---")
             with st.expander("📝 Rekod Solusi Sebenar di Kilang (AI Belajar Daripada Ini)"):
                 st.caption("Masukkan hasil pembaikan sebenar agar AI merujuk rekod ini pada masa akan datang.")
-                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Spring penegang pusher chain kendur melepasi tanda had 6")
+                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Gear wheel penegang spring longgar atau rantai kendur")
                 action_done = st.text_input("Tindakan Dibuat:", placeholder="cth: Pindah gear wheel 1 lubang ke bawah dan set kelegaan plat had 1 mm")
                 mod_affected = st.selectbox("Bahagian Terlibat:", ["Packing Lane", "Loader FL 330", "Infeed FT 330", "Penimbang", "Lain-lain"])
                 
