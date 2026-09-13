@@ -4,8 +4,8 @@ import fitz  # PyMuPDF
 import os
 import re
 import sqlite3
+import requests
 from datetime import datetime
-import google.generativeai as genai
 
 st.set_page_config(
     page_title="MOBA FT 330 & FL 330 AI Assistant",
@@ -14,16 +14,36 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 1. SAMBUNGAN GOOGLE GEMINI API (GOOGLE-GENERATIVEAI)
+# 1. SAMBUNGAN GEMINI REST API (SERASI FORMAT AQ.)
 # ----------------------------------------------------
-api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
-if not api_key:
-    st.error("API Key Gemini tidak ditemui! Sila masukkan GEMINI_API_KEY dalam Streamlit Secrets.")
+raw_api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+if not raw_api_key:
+    st.error("API Key Gemini tidak ditemui! Sila semak GEMINI_API_KEY dalam Streamlit Secrets.")
     st.stop()
 
-# Bersihkan ruang kosong atau tanda petik yang tidak disengajakan
-clean_key = str(api_key).strip().strip('"').strip("'")
-genai.configure(api_key=clean_key)
+CLEAN_API_KEY = str(raw_api_key).strip().strip('"').strip("'")
+
+def call_gemini_api(prompt_text, system_instruction):
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": CLEAN_API_KEY
+    }
+    payload = {
+        "contents": [{"parts": [{"text": prompt_text}]}],
+        "systemInstruction": {"parts": [{"text": system_instruction}]},
+        "generationConfig": {"temperature": 0.2}
+    }
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
+    if response.status_code == 200:
+        data = response.json()
+        try:
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            return "Ralat: Format respons AI tidak dijangka."
+    else:
+        err_msg = response.json().get("error", {}).get("message", response.text)
+        raise Exception(f"HTTP {response.status_code}: {err_msg}")
 
 # ----------------------------------------------------
 # 2. PANGKALAN DATA PEMBELAJARAN KILANG (SQLITE)
@@ -99,6 +119,7 @@ BM_SYNONYMS = {
     "gegar": "shaking vibrate flapping",
     "bawah": "bottom lower pusher",
     "bufferset": "buffer dropset",
+    "plastic hitam": "pusher transport",
     "bekas": "tray package carton"
 }
 
@@ -134,7 +155,6 @@ def get_pdf_page_image(pdf_path, page_num):
             return None, 0
     return None, 0
 
-# Memori Paparan Muka Surat
 if "view_doc" not in st.session_state:
     st.session_state.view_doc = "Omnia_FT_Service.pdf"
 if "view_page" not in st.session_state:
@@ -166,7 +186,6 @@ with tab_ai:
             with st.spinner("AI sedang menganalisis punca mekanikal & manual MOBA..."):
                 relevant_chunks = retrieve_relevant_chunks(user_problem, top_n=5)
                 
-                # Buka automatik muka surat paling relevan pada panel kanan
                 if relevant_chunks:
                     st.session_state.view_doc = relevant_chunks[0]["file"]
                     st.session_state.view_page = relevant_chunks[0]["page"]
@@ -181,7 +200,7 @@ with tab_ai:
 
                 system_instruction = (
                     "Anda ialah Jurutera Kanan Penyelenggaraan bagi mesin gred telur MOBA Omnia FT 330 "
-                    "dan Foodtec Loader FL 330. Jawab dalam Bahasa Melayu secara profesional, padat, dan teknikal.\n"
+                    "dan Foodtec Loader FL 330. Jawab dalam Bahasa Melayu secara profesional, berstruktur, dan teknikal.\n"
                     "Gunakan maklumat rujukan manual dan sejarah kilang yang dibekalkan di bawah.\n"
                     "FORMAT JAWAPAN:\n"
                     "1. Ringkasan Diagnostik & Punca Mekanikal/Elektrikal.\n"
@@ -197,12 +216,8 @@ with tab_ai:
                 )
 
                 try:
-                    model = genai.GenerativeModel(
-                        model_name="gemini-1.5-flash",
-                        system_instruction=system_instruction
-                    )
-                    response = model.generate_content(prompt_content)
-                    st.session_state.ai_response = response.text
+                    ai_reply = call_gemini_api(prompt_content, system_instruction)
+                    st.session_state.ai_response = ai_reply
                     st.session_state.relevant_chunks = relevant_chunks
                 except Exception as e:
                     st.error(f"Ralat AI: {e}")
@@ -226,7 +241,7 @@ with tab_ai:
             st.markdown("---")
             with st.expander("📝 Rekod Solusi Sebenar di Kilang (AI Belajar Daripada Ini)"):
                 st.caption("Masukkan hasil pembaikan sebenar agar AI merujuk rekod ini pada masa akan datang.")
-                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Gear wheel penegang spring longgar atau rantai kendur")
+                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Spring penegang pusher chain kendur melepasi tanda had 6")
                 action_done = st.text_input("Tindakan Dibuat:", placeholder="cth: Pindah gear wheel 1 lubang ke bawah dan set kelegaan plat had 1 mm")
                 mod_affected = st.selectbox("Bahagian Terlibat:", ["Packing Lane", "Loader FL 330", "Infeed FT 330", "Penimbang", "Lain-lain"])
                 
