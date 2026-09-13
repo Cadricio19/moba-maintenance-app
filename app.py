@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 1. SAMBUNGAN GEMINI REST API (key=API_KEY)
+# 1. SAMBUNGAN GEMINI REST API (DYNAMIC MODEL SELECTOR)
 # ----------------------------------------------------
 raw_api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
 CLEAN_API_KEY = str(raw_api_key).strip().strip('"').strip("'")
@@ -24,12 +24,36 @@ if not CLEAN_API_KEY:
     st.error("API Key Gemini tidak ditemui! Sila semak GEMINI_API_KEY dalam Streamlit Secrets.")
     st.stop()
 
+@st.cache_data(ttl=3600)
+def get_working_gemini_models():
+    """Mendapatkan senarai model generateContent yang sah terus dari akaun pengguna."""
+    list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={CLEAN_API_KEY}"
+    valid_models = []
+    try:
+        res = requests.get(list_url, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            for m in data.get("models", []):
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    m_name = m.get("name", "").replace("models/", "")
+                    valid_models.append(m_name)
+    except Exception:
+        pass
+    
+    # Model lalai jika senarai gagal dicapai
+    fallback_priority = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.8-flash", "gemini-flash-experimental"]
+    for fb in fallback_priority:
+        if fb not in valid_models:
+            valid_models.append(fb)
+            
+    return valid_models
+
 def call_gemini_api(prompt_text):
-    # Mengikut arahan rasmi Google: pasang sebagai parameter ?key=
-    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    candidate_models = get_working_gemini_models()
     last_error = ""
 
-    for model_name in models_to_try:
+    for model_name in candidate_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={CLEAN_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {
@@ -46,11 +70,11 @@ def call_gemini_api(prompt_text):
                 except (KeyError, IndexError):
                     return "Ralat: Format respons AI tidak dapat diproses."
             else:
-                last_error = f"HTTP {response.status_code}: {response.text}"
+                last_error = f"Model {model_name} -> HTTP {response.status_code}: {response.text}"
         except Exception as e:
             last_error = str(e)
 
-    raise Exception(f"Gagal berhubung dengan Gemini API: {last_error}")
+    raise Exception(f"Semua model gagal dihubungi. Respons terakhir: {last_error}")
 
 # ----------------------------------------------------
 # 2. PANGKALAN DATA PEMBELAJARAN KILANG (SQLITE)
