@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
 import os
+import re
 import sqlite3
 from datetime import datetime
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 st.set_page_config(
     page_title="MOBA FT 330 & FL 330 AI Assistant",
@@ -14,14 +14,16 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 1. SAMBUNGAN GOOGLE GEMINI API
+# 1. SAMBUNGAN GOOGLE GEMINI API (GOOGLE-GENERATIVEAI)
 # ----------------------------------------------------
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 if not api_key:
     st.error("API Key Gemini tidak ditemui! Sila masukkan GEMINI_API_KEY dalam Streamlit Secrets.")
     st.stop()
 
-client = genai.Client(api_key=api_key)
+# Bersihkan ruang kosong atau tanda petik yang tidak disengajakan
+clean_key = str(api_key).strip().strip('"').strip("'")
+genai.configure(api_key=clean_key)
 
 # ----------------------------------------------------
 # 2. PANGKALAN DATA PEMBELAJARAN KILANG (SQLITE)
@@ -61,7 +63,7 @@ def get_past_logs():
 init_db()
 
 # ----------------------------------------------------
-# 3. PENGINDEKSAN & EKSTRAKSI TEKS MANUAL (CACHE)
+# 3. PENGINDEKSAN MANUAL TEKNIKAL
 # ----------------------------------------------------
 @st.cache_resource
 def load_all_manuals():
@@ -87,9 +89,26 @@ def load_all_manuals():
 
 manual_data = load_all_manuals()
 
+BM_SYNONYMS = {
+    "tali sawat": "belt toothed",
+    "rantai": "chain",
+    "penimbang": "loadcell weighing",
+    "pencengkam": "gripper",
+    "sedut": "suction vacuum",
+    "bergegar": "shaking vibrate flapping",
+    "gegar": "shaking vibrate flapping",
+    "bawah": "bottom lower pusher",
+    "bufferset": "buffer dropset",
+    "bekas": "tray package carton"
+}
+
 def retrieve_relevant_chunks(query, top_n=5):
-    """Mencari muka surat manual paling relevan berdasarkan skor perkataan."""
-    words = [w.lower() for w in query.split() if len(w) > 2]
+    query_expanded = query.lower()
+    for bm, syn in BM_SYNONYMS.items():
+        if bm in query_expanded:
+            query_expanded += f" {syn}"
+
+    words = [w for w in re.findall(r'\b\w+\b', query_expanded) if len(w) > 2]
     scored = []
     for item in manual_data:
         score = 0
@@ -103,7 +122,6 @@ def retrieve_relevant_chunks(query, top_n=5):
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item for _, item in scored[:top_n]]
 
-# Fungsi Memaparkan Halaman PDF
 def get_pdf_page_image(pdf_path, page_num):
     if os.path.exists(pdf_path):
         try:
@@ -116,16 +134,14 @@ def get_pdf_page_image(pdf_path, page_num):
             return None, 0
     return None, 0
 
-# ----------------------------------------------------
-# 4. MEMORI STATE UNTUK PAPARAN MANUAL
-# ----------------------------------------------------
+# Memori Paparan Muka Surat
 if "view_doc" not in st.session_state:
     st.session_state.view_doc = "Omnia_FT_Service.pdf"
 if "view_page" not in st.session_state:
     st.session_state.view_page = 156
 
 # ----------------------------------------------------
-# 5. ANTARAMUKA STREAMLIT
+# 4. ANTARAMUKA STREAMLIT
 # ----------------------------------------------------
 tab_ai, tab_map, tab_logs = st.tabs([
     "🤖 AI Troubleshooter Pintar", 
@@ -133,9 +149,6 @@ tab_ai, tab_map, tab_logs = st.tabs([
     "📚 Rekod Pengalaman Kilang (Learning Store)"
 ])
 
-# ====================================================
-# TAB 1: AI DIAGNOSTIK GENERATIF (GEMINI + RAG)
-# ====================================================
 with tab_ai:
     col_chat, col_view = st.columns([1, 1])
 
@@ -143,30 +156,30 @@ with tab_ai:
         st.subheader("Tanya Apa Saja Isu Kerosakan")
         user_problem = st.text_area(
             "Huraikan masalah di lantai kilang (boleh guna BM biasa/santai):",
-            placeholder="cth: semalam ada masalah packing lane, chain bergegar kuat bawah bufferset tu. apa perlu adjust?",
-            height=90
+            value="Chain yang ada plastic hitam di bawah bufferset tu bergegar. Chain patutnya ada movement 4 kali dalam satu revolution, 3 kali untuk gerak ke depan, 1 kali terakhir untuk push carton ke conveyor. Chain bergegar ketika movement terakhir untuk push carton.",
+            height=110
         )
 
         btn_diagnose = st.button("🚀 Analisis Masalah & Cari Solusi", use_container_width=True)
 
         if btn_diagnose and user_problem.strip():
-            with st.spinner("AI sedang membaca Service Manual & Sejarah Kerosakan Kilang..."):
-                # 1. Dapatkan keratan teks manual berkaitan
-                relevant_chunks = retrieve_relevant_chunks(user_problem, top_n=6)
+            with st.spinner("AI sedang menganalisis punca mekanikal & manual MOBA..."):
+                relevant_chunks = retrieve_relevant_chunks(user_problem, top_n=5)
                 
-                # 2. Dapatkan rekod kerosakan lepas dari pangkalan data pembelajaran
-                past_logs_df = get_past_logs()
-                past_logs_text = ""
-                if not past_logs_df.empty:
-                    past_logs_text = past_logs_df.head(5).to_string(index=False)
+                # Buka automatik muka surat paling relevan pada panel kanan
+                if relevant_chunks:
+                    st.session_state.view_doc = relevant_chunks[0]["file"]
+                    st.session_state.view_page = relevant_chunks[0]["page"]
 
-                # 3. Bina konteks untuk Gemini
+                past_logs_df = get_past_logs()
+                past_logs_text = past_logs_df.head(5).to_string(index=False) if not past_logs_df.empty else "Tiada rekod sebelumnya."
+
                 context_text = "\n---\n".join([
                     f"[DOKUMEN: {c['doc_name']} | FAIL: {c['file']} | MUKA SURAT: {c['page']}]\n{c['text'][:1200]}"
                     for c in relevant_chunks
                 ])
 
-                system_prompt = (
+                system_instruction = (
                     "Anda ialah Jurutera Kanan Penyelenggaraan bagi mesin gred telur MOBA Omnia FT 330 "
                     "dan Foodtec Loader FL 330. Jawab dalam Bahasa Melayu secara profesional, padat, dan teknikal.\n"
                     "Gunakan maklumat rujukan manual dan sejarah kilang yang dibekalkan di bawah.\n"
@@ -177,32 +190,27 @@ with tab_ai:
                     "4. Rujukan Muka Surat & Dokumen Tepat (wajib nyatakan nama fail dan muka surat)."
                 )
 
-                full_prompt = (
-                    f"SEJARAH REKOD KEROSAKAN KILANG SEBELUM INI:\n{past_logs_text}\n\n"
+                prompt_content = (
+                    f"SEJARAH REKOD KEROSAKAN KILANG:\n{past_logs_text}\n\n"
                     f"PETIKAN MANUAL TEKNIKAL MOBA:\n{context_text}\n\n"
                     f"ADUAN JURUTEKNIK:\n{user_problem}"
                 )
 
                 try:
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=full_prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_prompt,
-                            temperature=0.2
-                        )
+                    model = genai.GenerativeModel(
+                        model_name="gemini-1.5-flash",
+                        system_instruction=system_instruction
                     )
+                    response = model.generate_content(prompt_content)
                     st.session_state.ai_response = response.text
                     st.session_state.relevant_chunks = relevant_chunks
                 except Exception as e:
                     st.error(f"Ralat AI: {e}")
 
-        # Paparan Jawapan AI
         if "ai_response" in st.session_state:
             st.markdown("### 📋 Hasil Diagnostik AI:")
             st.markdown(st.session_state.ai_response)
 
-            # Papar pintasan butang untuk membuka muka surat manual yang dikesan
             if "relevant_chunks" in st.session_state:
                 st.markdown("---")
                 st.markdown("**Buka Muka Surat Manual Berkaitan:**")
@@ -215,21 +223,19 @@ with tab_ai:
                             st.session_state.view_page = chunk["page"]
                             st.rerun()
 
-            # Bahagian Gelung Pembelajaran (Feedback Loop)
             st.markdown("---")
             with st.expander("📝 Rekod Solusi Sebenar di Kilang (AI Belajar Daripada Ini)"):
-                st.caption("Selepas masalah selesai dibaiki, masukkan apa yang sebenarnya berlaku supaya AI lebih pintar pada masa depan.")
-                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Bearing sprocket penegang pecah, bukan rantai kendur")
-                action_done = st.text_input("Tindakan Pembaikan Dibuat:", placeholder="cth: Tukar bearing 6204 dan tala semula spring ke 1.0 mm")
+                st.caption("Masukkan hasil pembaikan sebenar agar AI merujuk rekod ini pada masa akan datang.")
+                actual_cause = st.text_input("Punca Sebenar Ditemui:", placeholder="cth: Gear wheel penegang spring longgar atau rantai kendur")
+                action_done = st.text_input("Tindakan Dibuat:", placeholder="cth: Pindah gear wheel 1 lubang ke bawah dan set kelegaan plat had 1 mm")
                 mod_affected = st.selectbox("Bahagian Terlibat:", ["Packing Lane", "Loader FL 330", "Infeed FT 330", "Penimbang", "Lain-lain"])
                 
                 if st.button("💾 Simpan ke Pangkalan Data Kilang"):
                     if actual_cause and action_done:
                         save_log(user_problem, actual_cause, action_done, mod_affected)
-                        st.success("✅ Berjaya disimpan! AI akan menggunakan maklumat ini untuk cadangan masa depan.")
+                        st.success("✅ Berjaya disimpan!")
                         st.rerun()
 
-    # Kolum Kanan: Paparan Halaman Manual
     with col_view:
         st.subheader("📄 Paparan Dokumen Rujukan Asal")
         if st.session_state.view_doc:
@@ -249,9 +255,6 @@ with tab_ai:
                             st.rerun()
                 st.image(img_bytes, use_container_width=True)
 
-# ====================================================
-# TAB 2: PELAN ATAS SKEMATIK
-# ====================================================
 with tab_map:
     st.subheader("🗺️ Pelan Pandangan Atas")
     plan_choice = st.radio("Pilih Pandangan:", ["Packing Lane (Bab 11)", "Loader FL 330 (M/S 57)", "Omnia FT Grader (M/S 188)"], horizontal=True)
@@ -264,14 +267,10 @@ with tab_map:
     if img:
         st.image(img, use_container_width=True)
 
-# ====================================================
-# TAB 3: LOG SEJARAH & PEMBELAJARAN KILANG
-# ====================================================
 with tab_logs:
     st.subheader("📚 Rekod Pengalaman Pembaikan Kilang")
-    st.caption("Pangkalan data ini dibina secara automatik daripada maklum balas juruteknik dan dirujuk oleh AI semasa setiap sesi diagnostik.")
     logs_df = get_past_logs()
     if not logs_df.empty:
         st.dataframe(logs_df, use_container_width=True)
     else:
-        st.info("Belum ada rekod kerosakan disimpan. Masukkan solusi di Tab 1 selepas kerja servis dilakukan.")
+        st.info("Belum ada rekod kerosakan disimpan.")
