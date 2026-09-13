@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
-import base64
 import os
 
 st.set_page_config(
@@ -10,17 +9,31 @@ st.set_page_config(
     layout="wide"
 )
 
-# Fungsi Memaparkan Halaman PDF Spesifik
-def display_pdf_page(pdf_path, page_num):
-    if os.path.exists(pdf_path):
-        with open(pdf_path, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        pdf_html = f'<iframe src="data:application/pdf;base64,{base64_pdf}#page={page_num}" width="100%" height="650" type="application/pdf"></iframe>'
-        st.markdown(pdf_html, unsafe_allow_html=True)
-    else:
-        st.warning(f"Fail '{pdf_path}' tidak ditemui dalam folder projek.")
+# 1. Inisialisasi Session State (Simpan memori dokumen & muka surat)
+if "target_doc" not in st.session_state:
+    st.session_state.target_doc = None
+if "target_page" not in st.session_state:
+    st.session_state.target_page = 1
 
-# Pangkalan Data Isu Lazim & Muka Surat Dokumen Asal
+# 2. Fungsi Ekstrak Halaman PDF kepada Gambar PNG
+def get_pdf_page_image(pdf_path, page_num):
+    if os.path.exists(pdf_path):
+        try:
+            doc = fitz.open(pdf_path)
+            total_pages = len(doc)
+            # Pastikan nombor halaman sah (1-indexed ke 0-indexed)
+            actual_page = max(1, min(page_num, total_pages))
+            page = doc[actual_page - 1]
+            
+            # Render halaman ke imej beresolusi 150 DPI (jelas dibaca)
+            pix = page.get_pixmap(dpi=150)
+            return pix.tobytes("png"), total_pages
+        except Exception as e:
+            st.error(f"Ralat memproses fail PDF: {e}")
+            return None, 0
+    return None, 0
+
+# 3. Pangkalan Data Masalah Lazim
 PRESET_DIAGNOSTICS = [
     {
         "title": "Infeed Shaking / Gegaran Rantai Masukan",
@@ -28,104 +41,124 @@ PRESET_DIAGNOSTICS = [
         "doc": "Omnia_FT_Service.pdf",
         "page": 61,
         "vague_check": "Adakah MultiDrum kerap trip (Emergency Stop) atau rantai bawah melompat?",
-        "summary": "1. Spring keselamatan MultiDrum standard: 110 mm (min 100 mm).\n2. Rel sokongan rantai kembali Double Roll mesti setinggi mungkin.\n3. Kelegaan roller mestilah 0.5 - 1.0 mm.\n4. Rujuk bab 6.3.7 untuk talaan penuh."
+        "summary": "1. Spring keselamatan MultiDrum standard: 110 mm (min: 100 mm).\n2. Rel sokongan rantai kembali Double Roll mesti dilaraskan setinggi mungkin.\n3. Kelegaan roller mestilah 0.5 - 1.0 mm.\n4. Rujuk Bab 6.3.7 manual FT."
     },
     {
         "title": "Ketegangan Toothed Belt Suction Head",
         "module": "Loader FL 330",
         "doc": "FL_Loader_Service.pdf",
         "page": 112,
-        "vague_check": "Adakah tali sawat berbunyi atau pergerakan cawan sedutan tersentak?",
-        "summary": "1. Tetapkan ketegangan toothed belt pada 60 Hz menggunakan meter frekuensi akustik.\n2. Jarak cawan sedutan di atas plateau: 30 - 33 mm.\n3. Rujuk bab 8.9.1 manual FL."
+        "vague_check": "Adakah pergerakan cawan sedutan tersentak atau belt berbunyi?",
+        "summary": "1. Tetapkan ketegangan toothed belt pada frekuensi tepat 60 Hz.\n2. Jarak cawan sedutan di atas plateau: 30 - 33 mm.\n3. Rujuk Bab 8.9.1 manual FL."
     },
     {
         "title": "Ketegangan Toothed Belt Gripper Head",
         "module": "Loader FL 330",
         "doc": "FL_Loader_Service.pdf",
         "page": 126,
-        "vague_check": "Adakah kedudukan pencengkam lari dari dulang?",
-        "summary": "1. Tetapkan ketegangan toothed belt Gripper Head pada 46 - 47 Hz.\n2. Jarak bukaan grippers standard: 290 mm.\n3. Rujuk bab 8.10.4 manual FL."
+        "vague_check": "Adakah cengkaman dulang lari dari kedudukan asal?",
+        "summary": "1. Tetapkan ketegangan toothed belt Gripper Head pada 46 – 47 Hz.\n2. Jarak bukaan grippers: 290 mm.\n3. Rujuk Bab 8.10.4 manual FL."
     },
     {
         "title": "Penentukuran Penimbang (Loadcell Calibration)",
         "module": "Omnia FT 330",
         "doc": "Omnia_FT_Service.pdf",
         "page": 105,
-        "vague_check": "Adakah gram telur lari atau berlaku ralat komunikasi CarWgPc?",
-        "summary": "1. Jalankan Empty Carrier Calibration (10/10 cycles).\n2. Kalibrasi pembawa menggunakan pemberat plastik rasmi MOBA 63 gram (Art. 80206980).\n3. Rujuk bab 9.7 manual FT."
+        "vague_check": "Adakah gram telur lari atau ralat komunikasi CarWgPc?",
+        "summary": "1. Jalankan Empty Carrier Calibration (10/10 kitaran kelajuan tinggi).\n2. Kalibrasi pembawa dengan pemberat plastik MOBA 63 gram (Art. 80206980).\n3. Rujuk Bab 9.7 manual FT."
     },
     {
         "title": "Jangka Hayat Tiub Lampu UV-C Infeed",
         "module": "Sanitasi Infeed",
         "doc": "Philips_UV_Specs.pdf",
         "page": 1,
-        "vague_check": "Adakah lampu menyala malap atau meter jam melebihi had?",
-        "summary": "1. Model tiub: Philips TUV PL-L 55W/4P HF (Pangkalan 2G11).\n2. Jangka hayat operasi: 9,000 jam sebelum penurunan radiasi >15%.\n3. Sentiasa matikan mesin sebelum menyentuh modul UV."
+        "vague_check": "Adakah meter jam operasi sudah melebihi 9,000 jam?",
+        "summary": "1. Model tiub: Philips TUV PL-L 55W/4P HF (Pangkalan 2G11 4-Pin).\n2. Jangka hayat berguna: 9,000 jam sebelum penurunan radiasi melebihi 15%.\n3. Pastikan LOTO dipatuhi sebelum menukar tiub."
     }
 ]
 
-# Navigasi Tab
+# Susun Atur Tab
 tab_diag, tab_specs, tab_pm = st.tabs([
     "🔍 Diagnostik & Rujukan Dokumen", 
     "📏 Parameter & Toleransi Kunci", 
     "🛠️ Penjejak PM & Jam Operasi"
 ])
 
-# ----------------------------------------------------
-# TAB 1: DIAGNOSTIK & SEARCH MANUAL
-# ----------------------------------------------------
+# ====================================================
+# TAB 1: DIAGNOSTIK & SEMAKAN MANUAL ASAL
+# ====================================================
 with tab_diag:
     col_left, col_right = st.columns([1, 1])
-    
-    target_doc = None
-    target_page = 1
 
     with col_left:
-        st.subheader("Pilih Isu Kerosakan")
+        st.subheader("1. Pilih Masalah Lazim")
         issue_names = ["-- Pilih Masalah --"] + [f"{p['title']} ({p['module']})" for p in PRESET_DIAGNOSTICS]
-        selected = st.selectbox("Masalah Lazim:", issue_names)
+        selected = st.selectbox("Senarai Isu Operasi:", issue_names)
 
         if selected != "-- Pilih Masalah --":
             match = next(p for p in PRESET_DIAGNOSTICS if f"{p['title']} ({p['module']})" == selected)
-            st.warning(f"**Soalan Penentu:** {match['vague_check']}")
+            st.warning(f"**Soalan Penentu (Triage):** {match['vague_check']}")
             st.info(f"**Tindakan Pantas:**\n{match['summary']}")
-            target_doc = match["doc"]
-            target_page = match["page"]
+            if st.button(f"📖 Buka Dokumen: {match['doc']} (M/S {match['page']})", key="btn_preset"):
+                st.session_state.target_doc = match["doc"]
+                st.session_state.target_page = match["page"]
 
         st.markdown("---")
-        st.subheader("Atau Cari Teks Terus Dalam Manual")
-        search_query = st.text_input("Kata kunci carian (cth: resolver, vacuum, spring):")
+        st.subheader("2. Carian Teks Bebas Dalam Manual")
+        search_query = st.text_input("Taip kata kunci teknikal (cth: loader, vacuum, chain, sensor):")
 
         if search_query:
-            st.write("Keputusan padanan muka surat:")
+            st.write("Padanan ditemui dalam fail PDF (Klik butang untuk buka):")
             manuals_to_search = [
                 ("Omnia FT Service", "Omnia_FT_Service.pdf"),
                 ("FL Loader Service", "FL_Loader_Service.pdf"),
                 ("Philips UV Specs", "Philips_UV_Specs.pdf")
             ]
-            for name, path in manuals_to_search:
-                if os.path.exists(path):
-                    doc = fitz.open(path)
+            for doc_name, doc_path in manuals_to_search:
+                if os.path.exists(doc_path):
+                    doc = fitz.open(doc_path)
+                    found_count = 0
                     for p_num in range(len(doc)):
                         if search_query.lower() in doc[p_num].get_text().lower():
-                            if st.button(f"Lihat {name} - M/S {p_num + 1}", key=f"{name}_{p_num}"):
-                                target_doc = path
-                                target_page = p_num + 1
-                            break
+                            btn_label = f"Lihat {doc_name} — Muka Surat {p_num + 1}"
+                            if st.button(btn_label, key=f"search_{doc_name}_{p_num}"):
+                                st.session_state.target_doc = doc_path
+                                st.session_state.target_page = p_num + 1
+                            found_count += 1
+                            if found_count >= 3:  # Hadkan paparan 3 muka surat pertama yang sepadan
+                                break
 
     with col_right:
-        st.subheader("📄 Muka Surat Manual Asal")
-        if target_doc:
-            st.caption(f"Memaparkan `{target_doc}` pada Halaman {target_page}")
-            display_pdf_page(target_doc, target_page)
-        else:
-            st.info("Pilih masalah di sebelah kiri atau buat carian teks untuk membuka manual rujukan asal secara automatik di sini.")
+        st.subheader("📄 Paparan Dokumen Rujukan Asal")
+        
+        if st.session_state.target_doc:
+            img_bytes, total = get_pdf_page_image(st.session_state.target_doc, st.session_state.target_page)
+            if img_bytes:
+                st.success(f"Memaparkan `{st.session_state.target_doc}` | Halaman {st.session_state.target_page} daripada {total}")
+                
+                # Navigasi halaman sebelumnya / seterusnya
+                nav_prev, nav_next = st.columns(2)
+                with nav_prev:
+                    if st.button("⬅️ Muka Surat Sebelumnya", use_container_width=True):
+                        if st.session_state.target_page > 1:
+                            st.session_state.target_page -= 1
+                            st.rerun()
+                with nav_next:
+                    if st.button("Muka Surat Seterusnya ➡️", use_container_width=True):
+                        if st.session_state.target_page < total:
+                            st.session_state.target_page += 1
+                            st.rerun()
 
-# ----------------------------------------------------
+                # Papar imej dokumen asal
+                st.image(img_bytes, use_container_width=True)
+        else:
+            st.info("Pilih isu kerosakan di sebelah kiri atau klik butang carian muka surat untuk memaparkan lembaran manual rasmi di sini.")
+
+# ====================================================
 # TAB 2: PARAMETER & TOLERANSI KUNCI
-# ----------------------------------------------------
+# ====================================================
 with tab_specs:
-    st.subheader("Jadual Toleransi & Parameter Rasmi")
+    st.subheader("Jadual Toleransi & Parameter Rasmi MOBA")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Foodtec Loader FL 330**")
@@ -148,19 +181,18 @@ with tab_specs:
             {"Komponen": "Pemberat Ujian Loadcell", "Nilai": "130 gram"}
         ]))
 
-# ----------------------------------------------------
+# ====================================================
 # TAB 3: PENJEJAK PM & JAM OPERASI
-# ----------------------------------------------------
+# ====================================================
 with tab_pm:
     st.subheader("Penjejak Penyelenggaraan & Jangka Hayat Lampu UV-C")
     hrs = st.number_input("Masukkan Jumlah Jam Operasi Mesin:", min_value=0, value=2400, step=50)
 
-    # Status Lampu UV (9,000 jam had)
     uv_used = hrs % 9000
     st.write(f"**Status Tiub Philips TUV PL-L 55W:** {uv_used} / 9,000 Jam Operasi")
     st.progress(min(uv_used / 9000.0, 1.0))
     if uv_used >= 8500:
-        st.error("PERHATIAN: Lampu UV-C sudah menghampiri had 9,000 jam! Sediakan gantian untuk elak degradasi dos nyahkuman.")
+        st.error("PERHATIAN: Lampu UV-C menghampiri had 9,000 jam! Sediakan gantian segera.")
     else:
         st.success("Intensiti UV-C dalam keadaan memuaskan.")
 
@@ -170,4 +202,4 @@ with tab_pm:
     st.write("• **Setiap 40 Jam:** Bersihkan bulu/kulit telur di kawasan dropset.")
     st.write("• **Setiap 200 Jam:** Pelinciran rantai infeed & cuci penapis semburan air.")
     st.write("• **Setiap 1,200 Jam:** Periksa ketegangan toothed belt (Hz) dan rantai.")
-    st.write("• **Setiap 2,400 Jam:** Ganti penapis udara dan uji semua suis interlock/Emergency Stop.")
+    st.write("• **Setiap 2,400 Jam:** Ganti penapis udara dan periksa semua suis Emergency Stop.")
